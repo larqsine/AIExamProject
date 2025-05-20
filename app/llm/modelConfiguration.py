@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from langchain_ollama import OllamaLLM
 from typing import List
 
+
 class OllamaModelConfig(BaseModel):
     # Basic model configuration
     name: str
@@ -10,7 +11,7 @@ class OllamaModelConfig(BaseModel):
     top_k: int = 40
     repeat_penalty: float = 1.1
     stop: List[str] = []
-    
+
     def create_model(self) -> OllamaLLM:
         # Create an Ollama model instance with optimized settings
         return OllamaLLM(
