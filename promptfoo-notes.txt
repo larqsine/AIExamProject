@@ -1,0 +1,18 @@
+# Promptfoo Testing - Exam Notes
+
+## Quick Demo for Exam:
+
+1. **What it is:** Promptfoo tests prompt effectiveness
+2. **How to run:** `promptfoo eval`
+3. **What it tests:** Grammar feedback prompt with sample CV text
+4. **Result:** Shows if prompt produces expected output (contains "grammar")
+
+## File:
+- `promptfooconfig.yaml` - minimal test configuration
+
+## Command:
+```bash
+promptfoo eval
+```
+
+This satisfies the "Test your prompts using Promptfoo" requirement.

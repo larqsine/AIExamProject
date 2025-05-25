@@ -1,0 +1,15 @@
+description: "AI CV Helper - Prompt Testing"
+
+prompts:
+  - "You are a detail-oriented and helpful CV coach. You specialize in improving grammar and language use. Review the CV below and provide constructive feedback on grammar, spelling, and language use. Focus on clarity and professionalism. Reference these CV writing guidelines: {{guidelines}} CV TEXT: {{cv_text}} GRAMMAR AND LANGUAGE FEEDBACK:"
+
+providers:
+  - ollama:codellama:7b-instruct
+
+tests:
+  - vars:
+      cv_text: "I has 5 years experience in Python programming."
+      guidelines: "Proofread for grammar and spelling errors."
+    assert:
+      - type: contains
+        value: "grammar"

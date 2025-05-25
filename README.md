@@ -83,6 +83,13 @@ AI CV Helper uses LLM models via Ollama to analyze and provide constructive feed
    - Experience Check: Analyzes how work experience is presented
    - Layout Check: Reviews organization and structure
 
+## Prompt Testing
+
+Test prompts using Promptfoo:
+```bash
+promptfoo eval
+```
+
 ## Project Structure
 
 ```
