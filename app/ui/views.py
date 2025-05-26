@@ -1,211 +1,141 @@
-import flet as ft
-import requests
-import json
-from io import BytesIO
-import tempfile
-import os
-from typing import Dict, Any, List, Optional
-import mimetypes
+"""
+Main Views Module
 
-def main_view(page: ft.Page):
+This module contains the main view definitions for the AI CV Helper application.
+Refactored to use proper separation of concerns with dedicated service and handler classes.
+"""
+import flet as ft
+from .components import (
+    create_title_section, create_upload_button, create_status_text,
+    create_cv_preview_section, create_feedback_buttons, 
+    create_feedback_result_container, create_main_container
+)
+from .services import CVUploadService, FeedbackService, UIStateManager
+from .handlers import FileUploadHandler, FeedbackHandler
+
+
+def main_view(page: ft.Page) -> None:
+    """
+    Create and configure the main application view.
+    
+    This function sets up the entire UI using a clean architecture pattern:
+    - Components handle UI element creation
+    - Services manage business logic and API communication  
+    - Handlers manage event processing
+    - State manager tracks application state
+    """
+    # Configure page properties
+    _configure_page(page)
+    
+    # Initialize services and state management
+    upload_service = CVUploadService()
+    feedback_service = FeedbackService()
+    state_manager = UIStateManager()
+    
+    # Create UI components
+    ui_components = _create_ui_components()
+    
+    # Set up file picker
+    file_picker = ft.FilePicker()
+    page.overlay.append(file_picker)
+    
+    # Initialize event handlers
+    upload_handler = FileUploadHandler(
+        upload_service=upload_service,
+        state_manager=state_manager,
+        status_text=ui_components['status_text'],
+        cv_preview=ui_components['cv_preview'],
+        cv_preview_container=ui_components['cv_preview_container'],
+        feedback_container=ui_components['feedback_container']
+    )
+    
+    feedback_handler = FeedbackHandler(
+        feedback_service=feedback_service,
+        state_manager=state_manager,
+        feedback_status=ui_components['feedback_status'],
+        feedback_result=ui_components['feedback_result'],
+        feedback_result_container=ui_components['feedback_result_container']
+    )
+    
+    # Connect event handlers
+    file_picker.on_result = upload_handler.handle_file_picked
+    
+    # Configure upload button to use file picker
+    ui_components['upload_button'].on_click = lambda _: file_picker.pick_files(
+        allowed_extensions=["pdf", "txt"],
+        allow_multiple=False
+    )
+    
+    # Configure feedback buttons
+    feedback_buttons = create_feedback_buttons(feedback_handler.get_feedback)
+    
+    # Build the complete UI layout
+    main_content = _build_main_layout(ui_components, feedback_buttons)
+    
+    # Add to page
+    page.add(create_main_container(main_content))
+
+
+def _configure_page(page: ft.Page) -> None:
+    """Configure page-level properties."""
     page.title = "AI CV Helper"
     page.vertical_alignment = ft.MainAxisAlignment.START
     page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
     page.padding = 20
     page.theme_mode = ft.ThemeMode.LIGHT
-    page.scroll = ft.ScrollMode.AUTO  
+    page.scroll = ft.ScrollMode.AUTO
+
+
+def _create_ui_components() -> dict:
+    """Create all UI components and return them in a dictionary."""
+    # Create individual components
+    status_text = create_status_text()
+    upload_button = create_upload_button(None)  # on_click will be set later
     
-    cv_text = ""
+    cv_preview_title, cv_preview, cv_preview_container = create_cv_preview_section()
+    feedback_status, feedback_result, feedback_result_container = create_feedback_result_container()
     
-    file_picker = ft.FilePicker()
-    page.overlay.append(file_picker)
-    
-    def handle_file_picked(e: ft.FilePickerResultEvent):
-        if e.files and len(e.files) > 0:
-            file = e.files[0]
-            status_text.value = f"Uploading: {file.name}..."
-            status_text.update()
-            
-            try:
-                with open(file.path, "rb") as f:
-                    file_data = f.read()
-                
-                mime_type, _ = mimetypes.guess_type(file.name)
-                if not mime_type:
-                    if file.name.lower().endswith('.pdf'):
-                        mime_type = 'application/pdf'
-                    elif file.name.lower().endswith('.txt'):
-                        mime_type = 'text/plain'
-                    else:
-                        mime_type = 'application/octet-stream'  
-                
-                files = {"file": (file.name, BytesIO(file_data), mime_type)}
-                response = requests.post("http://127.0.0.1:8000/api/v1/upload/cv", files=files)
-                data = response.json()
-                
-                if response.status_code == 200 and data.get("success", False):
-                    nonlocal cv_text
-                    cv_text = data.get("text", "")
-                    cv_preview.value = cv_text  
-                    feedback_container.visible = True
-                    status_text.value = "CV uploaded successfully. Select feedback type below."
-                    status_text.color = ft.Colors.GREEN
-                else:
-                    status_text.value = f"Error: {data.get('message', 'Unknown error')}"
-                    status_text.color = ft.Colors.RED
-                    
-                status_text.update()
-                cv_preview_container.update()
-                feedback_container.update()
-                    
-            except Exception as ex:
-                status_text.value = f"Error processing file: {str(ex)}"
-                status_text.color = ft.Colors.RED
-                status_text.update()
-    
-    file_picker.on_result = handle_file_picked
-    def get_feedback(feedback_type: str):
-        if not cv_text:
-            status_text.value = "Please upload a CV first"
-            status_text.color = ft.Colors.RED
-            status_text.update()
-            return
-            
-        feedback_status.value = f"Getting {feedback_type} feedback..."
-        feedback_status.update()
-        
-        try:
-            response = requests.post(
-                "http://127.0.0.1:8000/api/v1/feedback",
-                json={"text": cv_text, "feedback_type": feedback_type}
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                feedback_result.value = data.get("feedback", "")
-                feedback_result_container.visible = True
-                feedback_status.value = f"{feedback_type.capitalize()} feedback ready!"
-                feedback_status.color = ft.Colors.GREEN
-            else:
-                feedback_status.value = f"Error: {response.text}"
-                feedback_status.color = ft.Colors.RED
-                
-            feedback_status.update()
-            feedback_result_container.update()
-            
-        except Exception as e:
-            feedback_status.value = f"Error: {str(e)}"
-            feedback_status.color = ft.Colors.RED
-            feedback_status.update()
-    
-    title = ft.Text("AI CV Helper", size=32, weight=ft.FontWeight.BOLD)
-    subtitle = ft.Text("Upload your CV for AI-powered feedback", size=16)
-    
-    upload_button = ft.ElevatedButton(
-        "Upload CV (PDF/TXT)",
-        icon=ft.Icons.UPLOAD_FILE,
-        on_click=lambda _: file_picker.pick_files(
-            allowed_extensions=["pdf", "txt"],
-            allow_multiple=False
-        )
-    )
-    
-    status_text = ft.Text("", size=14)
-    
-    cv_preview_title = ft.Text("CV Preview:", size=16, weight=ft.FontWeight.BOLD)
-    cv_preview = ft.Text("", size=12, selectable=True)
-    
-    cv_preview_container = ft.Container(
-        content=ft.Column(
-            [cv_preview],
-            scroll=ft.ScrollMode.AUTO 
-        ),
-        height=200,  
-        width=700,   
-        border=ft.border.all(1, ft.Colors.GREY_400),
-        border_radius=5,
-        padding=10,
-        bgcolor=ft.Colors.GREY_50
-    )
-    
-    
-    feedback_status = ft.Text("", size=14)
-    feedback_result = ft.Text("", size=14, selectable=True)
-    
-    feedback_result_container = ft.Container(
-        content=ft.Column(
-            [feedback_result],
-            scroll=ft.ScrollMode.AUTO  
-        ),
-        height=300,  
-        width=700,   
-        border=ft.border.all(1, ft.Colors.GREY_400),
-        border_radius=5,
-        padding=10,
-        bgcolor=ft.Colors.GREY_50,
-        visible=False  
-    )
-    
-    grammar_button = ft.ElevatedButton(
-        "Grammar Check",
-        icon=ft.Icons.SPELLCHECK,
-        on_click=lambda _: get_feedback("grammar")
-    )
-    
-    experience_button = ft.ElevatedButton(
-        "Experience Check",
-        icon=ft.Icons.WORK,
-        on_click=lambda _: get_feedback("experience")
-    )
-    
-    layout_button = ft.ElevatedButton(
-        "Layout Check",
-        icon=ft.Icons.VIEW_COMPACT,
-        on_click=lambda _: get_feedback("layout") 
-    )
-    
-    feedback_buttons = ft.Row(
-        [grammar_button, experience_button, layout_button],
-        alignment=ft.MainAxisAlignment.CENTER
-    )
-    
+    # Create feedback container structure
     feedback_container = ft.Column(
         [
             ft.Divider(),
             ft.Text("Get Feedback:", size=16, weight=ft.FontWeight.BOLD),
-            feedback_buttons,
+            ft.Container(),  # Placeholder for feedback buttons
             feedback_status,
             feedback_result_container  
         ],
         visible=False
     )
     
-    page.add(
-        ft.Container(
-            content=ft.Column(
-                [
-                    title,
-                    subtitle,
-                    ft.Container(height=20),
-                    upload_button,
-                    status_text,
-                    ft.Container(height=20),
-                    cv_preview_title,
-                    cv_preview_container, 
-                    feedback_container
-                ],
-                alignment=ft.MainAxisAlignment.START,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=10,
-            ),
-            padding=20,
-            width=800,
-            border_radius=10,
-            bgcolor=ft.Colors.WHITE,
-            shadow=ft.BoxShadow(
-                spread_radius=1,
-                blur_radius=15,
-                color=ft.Colors.BLACK12
-            )
-        )
+    return {
+        'status_text': status_text,
+        'upload_button': upload_button,
+        'cv_preview_title': cv_preview_title,
+        'cv_preview': cv_preview,
+        'cv_preview_container': cv_preview_container,
+        'feedback_status': feedback_status,
+        'feedback_result': feedback_result,
+        'feedback_result_container': feedback_result_container,
+        'feedback_container': feedback_container
+    }
+
+
+def _build_main_layout(ui_components: dict, feedback_buttons: ft.Row) -> ft.Column:
+    """Build the main layout structure."""
+    # Update feedback container with actual buttons
+    ui_components['feedback_container'].controls[2] = feedback_buttons
+    
+    return ft.Column(
+        [
+            *create_title_section().controls,
+            ui_components['upload_button'],
+            ui_components['status_text'],
+            ft.Container(height=20),
+            ui_components['cv_preview_title'],
+            ui_components['cv_preview_container'], 
+            ui_components['feedback_container']
+        ],
+        alignment=ft.MainAxisAlignment.START,
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        spacing=10,
     )
